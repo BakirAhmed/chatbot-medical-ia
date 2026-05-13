@@ -1,269 +1,366 @@
+"""
+CHATBOT MÉDICAL COMPLET
+- Détection des symptômes avec sévérité
+- Description de la maladie
+- 3 précautions à prendre
+- Interface bilingue (FR/EN)
+"""
+
 import re
 import pandas as pd
-import pyttsx3
-from sklearn import preprocessing
-from sklearn.tree import DecisionTreeClassifier,_tree
 import numpy as np
+from sklearn import preprocessing
+from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
-from sklearn.model_selection import cross_val_score
-from sklearn.svm import SVC
-import csv
 import warnings
-warnings.filterwarnings("ignore", category=DeprecationWarning)
+import os
 
+warnings.filterwarnings("ignore")
 
-training = pd.read_csv('Data/Training.csv')
-testing= pd.read_csv('Data/Testing.csv')
-cols= training.columns
-cols= cols[:-1]
-x = training[cols]
-y = training['prognosis']
-y1= y
+# ============================================
+# DICTIONNAIRES DE TRADUCTION
+# ============================================
 
+SYMPTOM_SYNONYMS = {
+    'itching': ['démangeaison', 'gratte', 'prurit', 'ça gratte', 'itching'],
+    'skin_rash': ['rougeur', 'éruption', 'bouton', 'plaque rouge', 'peau rouge', 'rash'],
+    'nodal_skin_eruptions': ['nodule', 'éruption nodulaire', 'nodal'],
+    'continuous_sneezing': ['éternuement', 'éternue', 'sternutation', 'sneeze', 'sneezing'],
+    'shivering': ['frisson', 'tremble', 'tremblement', 'shiver'],
+    'chills': ['froid', 'frisson de froid', 'chill'],
+    'joint_pain': ['douleur articulaire', 'articulation douloureuse', 'genou douloureux', 'joint pain'],
+    'stomach_pain': ['mal au ventre', 'douleur abdominale', 'ventre douloureux', 'stomach pain'],
+    'acidity': ['brûlure d\'estomac', 'acidité', 'reflux', 'aigreur', 'acidity'],
+    'ulcers_on_tongue': ['aphte', 'ulcère langue', 'plaie langue', 'ulcer tongue'],
+    'muscle_wasting': ['fonte musculaire', 'perte de muscle', 'muscle wasting'],
+    'vomiting': ['vomissement', 'vomi', 'vomiting', 'vomit'],
+    'burning_micturition': ['brûlure en urinant', 'urine brûlante', 'burning urine'],
+    'spotting_urination': ['uriner par gouttes', 'spotting urine'],
+    'fatigue': ['fatigue', 'épuisement', 'lasitude', 'pas d\'énergie', 'tired', 'fatigue'],
+    'weight_gain': ['prise de poids', 'grossir', 'weight gain'],
+    'anxiety': ['anxiété', 'stress', 'angoissé', 'inquiet', 'anxiety'],
+    'weight_loss': ['perte de poids', 'maigrir', 'weight loss'],
+    'restlessness': ['agitation', 'nerveux', 'restless'],
+    'lethargy': ['léthargie', 'apathie', 'somnolence', 'lethargy'],
+    'cough': ['toux', 'tousser', 'cough'],
+    'high_fever': ['forte fièvre', 'fièvre élevée', 'haute température', 'high fever'],
+    'headache': ['mal de tête', 'céphalée', 'migraine', 'headache', 'head pain'],
+    'nausea': ['nausée', 'mal au cœur', 'nausea'],
+    'loss_of_appetite': ['perte d\'appétit', 'plus faim', 'loss appetite'],
+    'back_pain': ['mal de dos', 'douleur lombaire', 'back pain'],
+    'constipation': ['constipé', 'difficulté à aller à la selle', 'constipation'],
+    'diarrhoea': ['diarrhée', 'selles liquides', 'diarrhoea', 'diarrhea'],
+    'chest_pain': ['douleur thoracique', 'mal à la poitrine', 'chest pain'],
+    'dizziness': ['vertige', 'étourdissement', 'tête qui tourne', 'dizzy', 'dizziness'],
+    'depression': ['dépression', 'tristesse', 'depressed', 'depression'],
+    'muscle_pain': ['courbature', 'douleur musculaire', 'muscle pain'],
+    'polyuria': ['urine fréquente', 'pipi souvent', 'urination fréquente', 'polyuria'],
+    'increased_appetite': ['beaucoup faim', 'faim excessive', 'augmentation appétit'],
+}
 
-reduced_data = training.groupby(training['prognosis']).max()
+SYMPTOM_FR = {
+    'itching': 'Démangeaisons',
+    'skin_rash': 'Rougeurs cutanées',
+    'nodal_skin_eruptions': 'Éruptions nodulaires',
+    'continuous_sneezing': 'Éternuements continus',
+    'shivering': 'Frissons',
+    'chills': 'Sensation de froid',
+    'joint_pain': 'Douleurs articulaires',
+    'stomach_pain': 'Douleurs abdominales',
+    'acidity': 'Brûlures d\'estomac',
+    'ulcers_on_tongue': 'Aphtes sur la langue',
+    'muscle_wasting': 'Fonte musculaire',
+    'vomiting': 'Vomissements',
+    'burning_micturition': 'Brûlures en urinant',
+    'fatigue': 'Fatigue',
+    'weight_gain': 'Prise de poids',
+    'anxiety': 'Anxiété',
+    'weight_loss': 'Perte de poids',
+    'cough': 'Toux',
+    'high_fever': 'Forte fièvre',
+    'headache': 'Maux de tête',
+    'nausea': 'Nausées',
+    'loss_of_appetite': 'Perte d\'appétit',
+    'back_pain': 'Mal de dos',
+    'constipation': 'Constipation',
+    'diarrhoea': 'Diarrhée',
+    'chest_pain': 'Douleur thoracique',
+    'dizziness': 'Vertiges',
+}
 
-#mapping strings to numbers
-le = preprocessing.LabelEncoder()
-le.fit(y)
-y = le.transform(y)
+# ============================================
+# CHARGEMENT DES DONNÉES
+# ============================================
 
+def load_data():
+    """Charge les datasets"""
+    try:
+        training = pd.read_csv('Data/Training.csv')
+        testing = pd.read_csv('Data/Testing.csv')
+        print("✅ Données chargées")
+        print(f"   Training: {training.shape[0]} lignes")
+        print(f"   Testing:  {testing.shape[0]} lignes")
+        return training, testing
+    except Exception as e:
+        print(f"❌ Erreur chargement données: {e}")
+        return None, None
 
-x_train, x_test, y_train, y_test = train_test_split(x, y, test_size=0.33, random_state=42)
-testx    = testing[cols]
-testy    = testing['prognosis']  
-testy    = le.transform(testy)
+def load_severity_dict():
+    """Charge les sévérités des symptômes"""
+    severity = {}
+    try:
+        with open('MasterData/Symptom_severity.csv', 'r') as f:
+            for line in f:
+                if ',' in line:
+                    parts = line.strip().split(',')
+                    if len(parts) >= 2:
+                        symptom = parts[0].strip()
+                        try:
+                            severity[symptom] = int(parts[1])
+                        except:
+                            severity[symptom] = 5
+        print(f"✅ Sévérités chargées: {len(severity)} symptômes")
+    except Exception as e:
+        print(f"⚠️ Fichier sévérité non trouvé: {e}")
+        # Valeurs par défaut
+        default = {'stomach_pain': 6, 'acidity': 5, 'ulcers_on_tongue': 6, 
+                   'vomiting': 7, 'cough': 3, 'fatigue': 4, 'headache': 5}
+        severity.update(default)
+    return severity
 
+def load_descriptions():
+    """Charge les descriptions des maladies"""
+    descriptions = {}
+    try:
+        with open('MasterData/symptom_Description.csv', 'r') as f:
+            for line in f:
+                if ',' in line:
+                    parts = line.strip().split(',', 1)
+                    if len(parts) >= 2:
+                        descriptions[parts[0]] = parts[1]
+        print(f"✅ Descriptions chargées: {len(descriptions)} maladies")
+    except Exception as e:
+        print(f"⚠️ Fichier descriptions non trouvé: {e}")
+        # Descriptions par défaut
+        descriptions['GERD'] = "Le reflux gastro-œsophagien est une remontée acide de l'estomac vers l'œsophage, causant brûlures et irritations."
+        descriptions['Fungal infection'] = "Infection causée par des champignons microscopiques affectant généralement la peau."
+        descriptions['Allergy'] = "Réaction excessive du système immunitaire à une substance normalement inoffensive."
+        descriptions['Diabetes'] = "Maladie caractérisée par un excès de sucre dans le sang."
+        descriptions['Hypertension'] = "Pression sanguine anormalement élevée dans les artères."
+    return descriptions
 
-clf1  = DecisionTreeClassifier()
-clf = clf1.fit(x_train,y_train)
-# print(clf.score(x_train,y_train))
-# print ("cross result========")
-scores = cross_val_score(clf, x_test, y_test, cv=3)
-# print (scores)
-print (scores.mean())
+def load_precautions():
+    """Charge les précautions (3 par maladie)"""
+    precautions = {}
+    try:
+        with open('MasterData/symptom_precaution.csv', 'r') as f:
+            for line in f:
+                parts = line.strip().split(',')
+                if parts:
+                    disease = parts[0]
+                    precautions[disease] = parts[1:4] if len(parts) >= 4 else []
+        print(f"✅ Précautions chargées: {len(precautions)} maladies")
+    except Exception as e:
+        print(f"⚠️ Fichier précautions non trouvé: {e}")
+        # Précautions par défaut (3 par maladie)
+        precautions['GERD'] = [
+            "Mangez en petites portions",
+            "Ne vous allongez pas après manger (attendez 2-3h)",
+            "Évitez café, alcool, aliments gras et épicés"
+        ]
+        precautions['Fungal infection'] = [
+            "Gardez la zone atteinte propre et sèche",
+            "Utilisez une crème antifongique prescrite",
+            "Portez des vêtements amples en coton"
+        ]
+        precautions['Allergy'] = [
+            "Identifiez et évitez l'allergène",
+            "Prenez un antihistaminique si prescrit",
+            "Gardez votre environnement propre"
+        ]
+    return precautions
 
+def train_model(training, testing):
+    """Entraîne le modèle"""
+    cols = training.columns[:-1]
+    x_train = training[cols]
+    y_train = training['prognosis']
+    x_test = testing[cols]
+    y_test = testing['prognosis']
+    
+    le = preprocessing.LabelEncoder()
+    le.fit(y_train)
+    y_train_enc = le.transform(y_train)
+    y_test_enc = le.transform(y_test)
+    
+    model = RandomForestClassifier(n_estimators=100, random_state=42)
+    model.fit(x_train, y_train_enc)
+    
+    score = model.score(x_test, y_test_enc)
+    print(f"✅ Modèle entraîné (accuracy: {score:.2%})")
+    
+    return model, le, cols
 
-model=SVC()
-model.fit(x_train,y_train)
-print("for svm: ")
-print(model.score(x_test,y_test))
+# ============================================
+# DÉTECTION DES SYMPTÔMES
+# ============================================
 
-importances = clf.feature_importances_
-indices = np.argsort(importances)[::-1]
-features = cols
+def extract_symptoms(text, all_symptoms):
+    """Extrait les symptômes du texte utilisateur"""
+    text = text.lower()
+    detected = []
+    
+    for symptom in all_symptoms:
+        if symptom.replace('_', ' ') in text or symptom in text:
+            detected.append(symptom)
+            continue
+        if symptom in SYMPTOM_SYNONYMS:
+            for synonym in SYMPTOM_SYNONYMS[symptom]:
+                if synonym.lower() in text:
+                    detected.append(symptom)
+                    break
+    return list(set(detected))
 
-def readn(nstr):
-    engine = pyttsx3.init()
+def symptoms_to_vector(detected, all_symptoms):
+    """Convertit en vecteur binaire"""
+    return [1 if s in detected else 0 for s in all_symptoms]
 
-    engine.setProperty('voice', "english+f5")
-    engine.setProperty('rate', 130)
+def predict_disease(model, le, vector, all_symptoms):
+    """Prédit la maladie"""
+    df = pd.DataFrame([vector], columns=all_symptoms)
+    pred_enc = model.predict(df)[0]
+    return le.inverse_transform([pred_enc])[0]
 
-    engine.say(nstr)
-    engine.runAndWait()
-    engine.stop()
+# ============================================
+# AFFICHAGE
+# ============================================
 
-
-severityDictionary=dict()
-description_list = dict()
-precautionDictionary=dict()
-
-symptoms_dict = {}
-
-for index, symptom in enumerate(x):
-       symptoms_dict[symptom] = index
-def calc_condition(exp,days):
-    sum=0
-    for item in exp:
-         sum=sum+severityDictionary[item]
-    if((sum*days)/(len(exp)+1)>13):
-        print("You should take the consultation from doctor. ")
+def display_detected_with_severity(detected, severity_dict):
+    """Affiche les symptômes détectés avec leur sévérité"""
+    print("\n" + "=" * 55)
+    print("🔍 SYMPTÔMES DÉTECTÉS AVEC LEUR SÉVÉRITÉ")
+    print("=" * 55)
+    print(f"{'N°':<4} {'Symptôme':<30} {'Sévérité':<10}")
+    print("-" * 55)
+    
+    if not detected:
+        print("   ❌ Aucun symptôme reconnu")
+        return False
+    
+    total = 0
+    for i, sym in enumerate(detected, 1):
+        name_fr = SYMPTOM_FR.get(sym, sym.replace('_', ' ').title())
+        sev = severity_dict.get(sym, 3)
+        total += sev
+        bar = "█" * min(sev, 10) + "░" * (10 - min(sev, 10))
+        print(f"{i:<4} {name_fr:<30} {sev:<3}/10    {bar}")
+    
+    avg = total / len(detected)
+    print("-" * 55)
+    print(f"📊 Sévérité moyenne: {avg:.1f}/10")
+    
+    if avg >= 7:
+        print("⚠️ ALERTE: Sévérité élevée! Consultez rapidement.")
+    elif avg >= 5:
+        print("⚠️ Attention: Sévérité modérée. Surveillez vos symptômes.")
     else:
-        print("It might not be that bad but you should take precautions.")
+        print("✅ Sévérité faible.")
+    
+    return True
 
+def display_disease_info(disease, descriptions, precautions):
+    """Affiche la description et les précautions de la maladie"""
+    print("\n" + "=" * 55)
+    print("🏥 DIAGNOSTIC")
+    print("=" * 55)
+    
+    # Nom de la maladie
+    disease_fr = {
+        'GERD': 'Reflux gastro-œsophagien',
+        'Fungal infection': 'Infection fongique',
+        'Allergy': 'Allergie',
+        'Diabetes': 'Diabète',
+        'Hypertension': 'Hypertension'
+    }.get(disease, disease)
+    
+    print(f"\n🩺 Maladie suspectée : {disease_fr}")
+    
+    # Description
+    print("\n📖 DESCRIPTION:")
+    desc = descriptions.get(disease, "Consultez un médecin pour un diagnostic précis.")
+    print(f"   {desc}")
+    
+    # 3 précautions
+    prec_list = precautions.get(disease, [
+        "Consultez un médecin",
+        "Suivez le traitement prescrit",
+        "Reposez-vous suffisamment"
+    ])[:3]
+    
+    print("\n🛡️ PRÉCAUTIONS (3 recommandations):")
+    for i, p in enumerate(prec_list, 1):
+        if p and p.strip():
+            print(f"   {i}. {p.strip()}")
+    
+    print("\n" + "=" * 55)
+    print("⚠️  Ce diagnostic est indicatif. Consultez un médecin.")
+    print("=" * 55)
 
-def getDescription():
-    global description_list
-    with open('MasterData/symptom_Description.csv') as csv_file:
-        csv_reader = csv.reader(csv_file, delimiter=',')
-        line_count = 0
-        for row in csv_reader:
-            _description={row[0]:row[1]}
-            description_list.update(_description)
+# ============================================
+# INTERFACE PRINCIPALE
+# ============================================
 
-
-
-
-def getSeverityDict():
-    global severityDictionary
-    with open('MasterData/symptom_severity.csv') as csv_file:
-
-        csv_reader = csv.reader(csv_file, delimiter=',')
-        line_count = 0
-        try:
-            for row in csv_reader:
-                _diction={row[0]:int(row[1])}
-                severityDictionary.update(_diction)
-        except:
-            pass
-
-
-def getprecautionDict():
-    global precautionDictionary
-    with open('MasterData/symptom_precaution.csv') as csv_file:
-
-        csv_reader = csv.reader(csv_file, delimiter=',')
-        line_count = 0
-        for row in csv_reader:
-            _prec={row[0]:[row[1],row[2],row[3],row[4]]}
-            precautionDictionary.update(_prec)
-
-
-def getInfo():
-    print("-----------------------------------HealthCare ChatBot-----------------------------------")
-    print("\nYour Name? \t\t\t\t",end="->")
-    name=input("")
-    print("Hello, ",name)
-
-def check_pattern(dis_list,inp):
-    pred_list=[]
-    inp=inp.replace(' ','_')
-    patt = f"{inp}"
-    regexp = re.compile(patt)
-    pred_list=[item for item in dis_list if regexp.search(item)]
-    if(len(pred_list)>0):
-        return 1,pred_list
-    else:
-        return 0,[]
-def sec_predict(symptoms_exp):
-    df = pd.read_csv('Data/Training.csv')
-    X = df.iloc[:, :-1]
-    y = df['prognosis']
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=20)
-    rf_clf = DecisionTreeClassifier()
-    rf_clf.fit(X_train, y_train)
-
-    symptoms_dict = {symptom: index for index, symptom in enumerate(X)}
-    input_vector = np.zeros(len(symptoms_dict))
-    for item in symptoms_exp:
-      input_vector[[symptoms_dict[item]]] = 1
-
-    return rf_clf.predict([input_vector])
-
-
-def print_disease(node):
-    node = node[0]
-    val  = node.nonzero() 
-    disease = le.inverse_transform(val[0])
-    return list(map(lambda x:x.strip(),list(disease)))
-
-def tree_to_code(tree, feature_names):
-    tree_ = tree.tree_
-    feature_name = [
-        feature_names[i] if i != _tree.TREE_UNDEFINED else "undefined!"
-        for i in tree_.feature
-    ]
-
-    chk_dis=",".join(feature_names).split(",")
-    symptoms_present = []
-
+def main():
+    print("=" * 60)
+    print("🏥 CHATBOT MÉDICAL - ASSISTANT DE DIAGNOSTIC")
+    print("=" * 60)
+    print("\n🤖 Décrivez vos symptômes, j'identifierai la maladie possible")
+    print("   avec sévérité, description et précautions.\n")
+    
+    # Chargement
+    training, testing = load_data()
+    if training is None:
+        return
+    
+    model, le, cols = train_model(training, testing)
+    all_symptoms = list(cols)
+    
+    severity_dict = load_severity_dict()
+    descriptions = load_descriptions()
+    precautions = load_precautions()
+    
+    print(f"\n📋 Base: {len(all_symptoms)} symptômes reconnus\n")
+    
+    # Boucle principale
     while True:
-
-        print("\nEnter the symptom you are experiencing  \t\t",end="->")
-        disease_input = input("")
-        conf,cnf_dis=check_pattern(chk_dis,disease_input)
-        if conf==1:
-            print("searches related to input: ")
-            for num,it in enumerate(cnf_dis):
-                print(num,")",it)
-            if num!=0:
-                print(f"Select the one you meant (0 - {num}):  ", end="")
-                conf_inp = int(input(""))
-            else:
-                conf_inp=0
-
-            disease_input=cnf_dis[conf_inp]
+        print("-" * 55)
+        print("\n👉 Décrivez vos symptômes (ou 'quit' pour quitter)")
+        print("   Ex: 'J'ai mal au ventre, des brûlures, des aphtes, je vomis et je tousse'")
+        
+        user_input = input("\n> ").strip()
+        
+        if user_input.lower() in ['quit', 'exit', 'q']:
+            print("\n👋 Prenez soin de vous !")
             break
-            # print("Did you mean: ",cnf_dis,"?(yes/no) :",end="")
-            # conf_inp = input("")
-            # if(conf_inp=="yes"):
-            #     break
-        else:
-            print("Enter valid symptom.")
+        
+        if not user_input:
+            print("❌ Veuillez décrire vos symptômes")
+            continue
+        
+        # Extraction et affichage
+        detected = extract_symptoms(user_input, all_symptoms)
+        
+        if not display_detected_with_severity(detected, severity_dict):
+            continue
+        
+        # Prédiction
+        vector = symptoms_to_vector(detected, all_symptoms)
+        disease = predict_disease(model, le, vector, all_symptoms)
+        
+        # Affichage description + précautions
+        display_disease_info(disease, descriptions, precautions)
+        
+        print("\n💡 Tapez 'quit' pour quitter ou continuez.\n")
 
-    while True:
-        try:
-            num_days=int(input("Okay. From how many days ? : "))
-            break
-        except:
-            print("Enter valid input.")
-    def recurse(node, depth):
-        indent = "  " * depth
-        if tree_.feature[node] != _tree.TREE_UNDEFINED:
-            name = feature_name[node]
-            threshold = tree_.threshold[node]
-
-            if name == disease_input:
-                val = 1
-            else:
-                val = 0
-            if  val <= threshold:
-                recurse(tree_.children_left[node], depth + 1)
-            else:
-                symptoms_present.append(name)
-                recurse(tree_.children_right[node], depth + 1)
-        else:
-            present_disease = print_disease(tree_.value[node])
-            # print( "You may have " +  present_disease )
-            red_cols = reduced_data.columns 
-            symptoms_given = red_cols[reduced_data.loc[present_disease].values[0].nonzero()]
-            # dis_list=list(symptoms_present)
-            # if len(dis_list)!=0:
-            #     print("symptoms present  " + str(list(symptoms_present)))
-            # print("symptoms given "  +  str(list(symptoms_given)) )
-            print("Are you experiencing any ")
-            symptoms_exp=[]
-            for syms in list(symptoms_given):
-                inp=""
-                print(syms,"? : ",end='')
-                while True:
-                    inp=input("")
-                    if(inp=="yes" or inp=="no"):
-                        break
-                    else:
-                        print("provide proper answers i.e. (yes/no) : ",end="")
-                if(inp=="yes"):
-                    symptoms_exp.append(syms)
-
-            second_prediction=sec_predict(symptoms_exp)
-            # print(second_prediction)
-            calc_condition(symptoms_exp,num_days)
-            if(present_disease[0]==second_prediction[0]):
-                print("You may have ", present_disease[0])
-                print(description_list[present_disease[0]])
-
-                # readn(f"You may have {present_disease[0]}")
-                # readn(f"{description_list[present_disease[0]]}")
-
-            else:
-                print("You may have ", present_disease[0], "or ", second_prediction[0])
-                print(description_list[present_disease[0]])
-                print(description_list[second_prediction[0]])
-
-            # print(description_list[present_disease[0]])
-            precution_list=precautionDictionary[present_disease[0]]
-            print("Take following measures : ")
-            for  i,j in enumerate(precution_list):
-                print(i+1,")",j)
-
-            # confidence_level = (1.0*len(symptoms_present))/len(symptoms_given)
-            # print("confidence level is " + str(confidence_level))
-
-    recurse(0, 1)
-getSeverityDict()
-getDescription()
-getprecautionDict()
-getInfo()
-tree_to_code(clf,cols)
-print("----------------------------------------------------------------------------------------")
-
+if __name__ == "__main__":
+    main()
