@@ -97,12 +97,12 @@ def load_data():
     try:
         training = pd.read_csv('Data/Training.csv')
         testing = pd.read_csv('Data/Testing.csv')
-        print("✅ Données chargées")
+        print(" Données chargées")
         print(f"   Training: {training.shape[0]} lignes")
         print(f"   Testing:  {testing.shape[0]} lignes")
         return training, testing
     except Exception as e:
-        print(f"❌ Erreur chargement données: {e}")
+        print(f" Erreur chargement données: {e}")
         return None, None
 
 def load_severity_dict():
@@ -119,9 +119,9 @@ def load_severity_dict():
                             severity[symptom] = int(parts[1])
                         except:
                             severity[symptom] = 5
-        print(f"✅ Sévérités chargées: {len(severity)} symptômes")
+        print(f" Sévérités chargées: {len(severity)} symptômes")
     except Exception as e:
-        print(f"⚠️ Fichier sévérité non trouvé: {e}")
+        print(f" Fichier sévérité non trouvé: {e}")
         # Valeurs par défaut
         default = {'stomach_pain': 6, 'acidity': 5, 'ulcers_on_tongue': 6, 
                    'vomiting': 7, 'cough': 3, 'fatigue': 4, 'headache': 5}
@@ -138,9 +138,9 @@ def load_descriptions():
                     parts = line.strip().split(',', 1)
                     if len(parts) >= 2:
                         descriptions[parts[0]] = parts[1]
-        print(f"✅ Descriptions chargées: {len(descriptions)} maladies")
+        print(f" Descriptions chargées: {len(descriptions)} maladies")
     except Exception as e:
-        print(f"⚠️ Fichier descriptions non trouvé: {e}")
+        print(f" Fichier descriptions non trouvé: {e}")
         # Descriptions par défaut
         descriptions['GERD'] = "Le reflux gastro-œsophagien est une remontée acide de l'estomac vers l'œsophage, causant brûlures et irritations."
         descriptions['Fungal infection'] = "Infection causée par des champignons microscopiques affectant généralement la peau."
@@ -159,9 +159,9 @@ def load_precautions():
                 if parts:
                     disease = parts[0]
                     precautions[disease] = parts[1:4] if len(parts) >= 4 else []
-        print(f"✅ Précautions chargées: {len(precautions)} maladies")
+        print(f" Précautions chargées: {len(precautions)} maladies")
     except Exception as e:
-        print(f"⚠️ Fichier précautions non trouvé: {e}")
+        print(f" Fichier précautions non trouvé: {e}")
         # Précautions par défaut (3 par maladie)
         precautions['GERD'] = [
             "Mangez en petites portions",
@@ -238,13 +238,13 @@ def predict_disease(model, le, vector, all_symptoms):
 def display_detected_with_severity(detected, severity_dict):
     """Affiche les symptômes détectés avec leur sévérité"""
     print("\n" + "=" * 55)
-    print("🔍 SYMPTÔMES DÉTECTÉS AVEC LEUR SÉVÉRITÉ")
+    print(" SYMPTÔMES DÉTECTÉS AVEC LEUR SÉVÉRITÉ")
     print("=" * 55)
     print(f"{'N°':<4} {'Symptôme':<30} {'Sévérité':<10}")
     print("-" * 55)
     
     if not detected:
-        print("   ❌ Aucun symptôme reconnu")
+        print("    Aucun symptôme reconnu")
         return False
     
     total = 0
@@ -257,21 +257,21 @@ def display_detected_with_severity(detected, severity_dict):
     
     avg = total / len(detected)
     print("-" * 55)
-    print(f"📊 Sévérité moyenne: {avg:.1f}/10")
+    print(f" Sévérité moyenne: {avg:.1f}/10")
     
     if avg >= 7:
-        print("⚠️ ALERTE: Sévérité élevée! Consultez rapidement.")
+        print(" ALERTE: Sévérité élevée! Consultez rapidement.")
     elif avg >= 5:
-        print("⚠️ Attention: Sévérité modérée. Surveillez vos symptômes.")
+        print(" Attention: Sévérité modérée. Surveillez vos symptômes.")
     else:
-        print("✅ Sévérité faible.")
+        print(" Sévérité faible.")
     
     return True
 
 def display_disease_info(disease, descriptions, precautions):
     """Affiche la description et les précautions de la maladie"""
     print("\n" + "=" * 55)
-    print("🏥 DIAGNOSTIC")
+    print(" DIAGNOSTIC")
     print("=" * 55)
     
     # Nom de la maladie
@@ -286,7 +286,7 @@ def display_disease_info(disease, descriptions, precautions):
     print(f"\n🩺 Maladie suspectée : {disease_fr}")
     
     # Description
-    print("\n📖 DESCRIPTION:")
+    print("\n DESCRIPTION:")
     desc = descriptions.get(disease, "Consultez un médecin pour un diagnostic précis.")
     print(f"   {desc}")
     
@@ -297,7 +297,7 @@ def display_disease_info(disease, descriptions, precautions):
         "Reposez-vous suffisamment"
     ])[:3]
     
-    print("\n🛡️ PRÉCAUTIONS (3 recommandations):")
+    print("\n PRÉCAUTIONS (3 recommandations):")
     for i, p in enumerate(prec_list, 1):
         if p and p.strip():
             print(f"   {i}. {p.strip()}")
@@ -312,9 +312,9 @@ def display_disease_info(disease, descriptions, precautions):
 
 def main():
     print("=" * 60)
-    print("🏥 CHATBOT MÉDICAL - ASSISTANT DE DIAGNOSTIC")
+    print(" CHATBOT MÉDICAL - ASSISTANT DE DIAGNOSTIC")
     print("=" * 60)
-    print("\n🤖 Décrivez vos symptômes, j'identifierai la maladie possible")
+    print("\n Décrivez vos symptômes, j'identifierai la maladie possible")
     print("   avec sévérité, description et précautions.\n")
     
     # Chargement
@@ -329,7 +329,7 @@ def main():
     descriptions = load_descriptions()
     precautions = load_precautions()
     
-    print(f"\n📋 Base: {len(all_symptoms)} symptômes reconnus\n")
+    print(f"\n Base: {len(all_symptoms)} symptômes reconnus\n")
     
     # Boucle principale
     while True:
@@ -344,7 +344,7 @@ def main():
             break
         
         if not user_input:
-            print("❌ Veuillez décrire vos symptômes")
+            print(" Veuillez décrire vos symptômes")
             continue
         
         # Extraction et affichage
@@ -360,7 +360,7 @@ def main():
         # Affichage description + précautions
         display_disease_info(disease, descriptions, precautions)
         
-        print("\n💡 Tapez 'quit' pour quitter ou continuez.\n")
+        print("\n Tapez 'quit' pour quitter ou continuez.\n")
 
 if __name__ == "__main__":
     main()
